@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tarot
+      POSTGRES_PASSWORD: tarot
+      POSTGRES_DB: tarot
+    ports:
+      - "5432:5432"
+    volumes:
+      - tarot_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tarot -d tarot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://tarot:tarot@db:5432/tarot
+      CORS_ORIGINS: http://localhost:3000,http://localhost:5173
+      LOG_LEVEL: INFO
+      INTERPRETATION_PROVIDER: mock
+      INTERPRETATION_API_KEY: ""
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m app.db.seed &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  tarot_pg:
