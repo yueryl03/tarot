@@ -173,3 +173,24 @@ async def test_openai_provider_without_configuration_does_not_call_the_network()
         await provider.generate_reading(_request())
     await client.aclose()
     assert caught.value.code == "provider_not_configured"
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_reports_rate_limit_without_the_api_key() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"error": {"message": "rate limited"}})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = OpenAICompatibleProvider(
+        base_url="http://models.example/v1",
+        api_key="test-key",
+        model="example-model",
+        timeout_seconds=5,
+        client=client,
+    )
+    with pytest.raises(TarotError) as caught:
+        await provider.generate_reading(_request())
+    await client.aclose()
+    assert caught.value.code == "interpretation_failed"
+    assert caught.value.details["status_code"] == 429
+    assert "test-key" not in caught.value.message

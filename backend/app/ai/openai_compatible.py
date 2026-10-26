@@ -64,9 +64,26 @@ class OpenAICompatibleProvider:
             content = body["choices"][0]["message"]["content"]
         except TarotError:
             raise
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if status == 429:
+                message = (
+                    "解讀服務目前被限流，請稍後再試。"
+                    " The interpretation provider is rate-limited. Try again shortly."
+                )
+            else:
+                message = (
+                    "解讀服務沒有回傳可用的結果。"
+                    " The interpretation provider request failed."
+                )
+            raise TarotError(
+                message,
+                code="interpretation_failed",
+                details={"status_code": status},
+            ) from exc
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
             raise TarotError(
-                "The interpretation provider request failed.",
+                "解讀服務沒有回傳可用的結果。 The interpretation provider request failed.",
                 code="interpretation_failed",
             ) from exc
         return _from_model_json(

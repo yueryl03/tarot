@@ -1,9 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { Copy } from "./Copy";
 import {
-  arcanaName,
-  arcanaNameEn,
   orientationName,
   orientationNameEn,
   positionName,
@@ -34,44 +32,23 @@ export function ReadingTable({
   onInterpret,
   onReset,
 }: ReadingTableProps) {
-  const [selected, setSelected] = useState<number[]>([]);
   const revealed = useMemo(
     () => new Set(reading.revealed_slot_indices),
     [reading.revealed_slot_indices],
   );
+  const cardBySlot = useMemo(
+    () => new Map(reading.draws.map((card) => [card.slot_index, card])),
+    [reading.draws],
+  );
   const remaining = reading.remaining_positions.length;
   const done = reading.status === "completed";
   const nextPosition = reading.remaining_positions[0] ?? null;
-  const chosen = selected.filter((slot) => !revealed.has(slot));
 
-  useEffect(() => {
-    setSelected((current) => current.filter((slot) => !revealed.has(slot)));
-  }, [reading.revealed_slot_indices, revealed]);
-
-  function toggleSlot(slot: number) {
-    if (done || busy || revealed.has(slot)) {
+  function drawSlot(slot: number) {
+    if (done || busy || revealed.has(slot) || remaining === 0) {
       return;
     }
-    setSelected((current) => {
-      if (current.includes(slot)) {
-        return current.filter((item) => item !== slot);
-      }
-      if (current.length >= remaining) {
-        return current;
-      }
-      return [...current, slot];
-    });
-  }
-
-  function revealSelected() {
-    if (chosen.length === 0) {
-      return;
-    }
-    onDraw({ mode: "select", slot_indices: chosen });
-  }
-
-  function drawTop(count: number) {
-    onDraw({ mode: "top", count });
+    onDraw({ mode: "select", slot_indices: [slot] });
   }
 
   return (
@@ -122,87 +99,41 @@ export function ReadingTable({
       {done ? null : (
         <div className="draw-bar">
           <p>
-            {chosen.length > 0 ? (
-              <Copy
-                zh={`已選 ${chosen.length} 張，將依點選順序放進牌陣。`}
-                en={`${chosen.length} selected. They will enter the spread in the order you chose them.`}
-              />
-            ) : (
-              <Copy
-                zh="點牌背選擇，或直接從牌頂翻開。牌的身份現在還不知道。"
-                en="Choose card backs, or draw from the top. The identities are still hidden."
-              />
-            )}
+            <Copy
+              zh="七十八張牌都蓋著。點一張就抽那一張，翻開後先顯示牌名。"
+              en="All 78 cards stay face down. Click one to draw it. The face shows the card name."
+            />
           </p>
-          <div className="actions">
-            <button
-              className="primary"
-              type="button"
-              disabled={busy || chosen.length === 0}
-              onClick={revealSelected}
-            >
-              {chosen.length > 0 ? (
-                <Copy zh={`翻開選中的 ${chosen.length} 張`} en={`Reveal ${chosen.length} selected`} />
-              ) : (
-                <Copy zh="翻開選中的牌" en="Reveal selected cards" />
-              )}
-            </button>
-            <button
-              className="secondary"
-              type="button"
-              disabled={busy || remaining === 0 || chosen.length > 0}
-              onClick={() => drawTop(1)}
-            >
-              <Copy zh="從牌頂抽一張" en="Draw the top card" />
-            </button>
-            {remaining > 1 ? (
-              <button
-                className="secondary"
-                type="button"
-                disabled={busy || chosen.length > 0}
-                onClick={() => drawTop(remaining)}
-              >
-                <Copy
-                  zh={`從牌頂抽完剩餘 ${remaining} 張`}
-                  en={`Draw the remaining ${remaining} from the top`}
-                />
-              </button>
-            ) : null}
-            {chosen.length > 0 ? (
-              <button className="ghost" type="button" onClick={() => setSelected([])}>
-                <Copy zh="取消選取" en="Clear selection" />
-              </button>
-            ) : null}
-          </div>
         </div>
       )}
 
-      <div className={done ? "fan is-done" : "fan"} aria-hidden={done}>
+      <div className="fan">
         {Array.from({ length: DECK_SIZE }, (_, slot) => {
-          const order = chosen.indexOf(slot);
-          const used = revealed.has(slot);
+          const card = cardBySlot.get(slot);
+          if (card) {
+            const reversed = card.orientation === "reversed";
+            return (
+              <div
+                key={slot}
+                className={reversed ? "card-tile is-face is-reversed" : "card-tile is-face"}
+              >
+                <p className="tile-name">{card.card_name}</p>
+                <p className="tile-orientation">
+                  {orientationName(card.orientation)} / {orientationNameEn(card.orientation)}
+                </p>
+              </div>
+            );
+          }
           return (
             <button
               key={slot}
               type="button"
-              className={[
-                "card-back",
-                used ? "is-used" : "",
-                order >= 0 ? "is-selected" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              disabled={done || busy || used || (order < 0 && chosen.length >= remaining)}
-              aria-pressed={order >= 0}
-              aria-label={
-                used
-                  ? `第 ${slot + 1} 張牌背已翻開。 Card back ${slot + 1}, already revealed.`
-                  : `第 ${slot + 1} 張牌背。 Card back ${slot + 1}.`
-              }
-              onClick={() => toggleSlot(slot)}
+              className="card-tile is-back"
+              disabled={done || busy || remaining === 0}
+              aria-label={`第 ${slot + 1} 張牌背。 Card back ${slot + 1}.`}
+              onClick={() => drawSlot(slot)}
             >
               <span className="back-pattern" />
-              {order >= 0 ? <em>{order + 1}</em> : null}
             </button>
           );
         })}
@@ -340,20 +271,9 @@ function Slot({
           <p className="face-name">{card.card_name}</p>
           <p className="face-meta">
             <span>
-              {card.arcana_type === "major"
-                ? `${arcanaName(card.arcana_type)} / ${arcanaNameEn(card.arcana_type)}`
-                : `${suitName(card.suit)} / ${suitNameEn(card.suit)}`}
-            </span>
-            <span>
               {orientationName(card.orientation)} / {orientationNameEn(card.orientation)}
             </span>
           </p>
-          <ul className="keywords">
-            {card.keywords.slice(0, 3).map((keyword) => (
-              <li key={keyword}>{keyword}</li>
-            ))}
-          </ul>
-          <p className="meaning">{card.general_meaning}</p>
         </div>
       ) : (
         <p className="waiting">

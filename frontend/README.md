@@ -2,7 +2,7 @@
 
 A small React app for the reading API in `../backend`.
 
-The page asks for a question and a spread, then shows the 78 face-down slots from that reading. Choosing slots calls `mode: "select"`. Drawing from the top calls `mode: "top"`. The browser never receives an unrevealed card. When the spread is full, it can ask the API for the mock interpretation.
+The page asks for a question and a spread, then lays out all 78 cards face down. Clicking one card calls `mode: "select"` for that slot and turns it face up in place. The face shows the card name. The browser never receives an unrevealed card. When the spread is full, it can ask the API for the mock interpretation.
 
 The reading id and bearer token are stored in `localStorage` so a refresh reloads the same deck. The API only returns the token once.
 
